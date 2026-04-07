@@ -3,143 +3,201 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Deltarune Scythe Adventure</title>
+    <title>Scythe Destiny - Mobile</title>
     <style>
-        body { margin: 0; background: #000; color: white; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
-        canvas { display: block; background: #111; margin: auto; border: 2px solid #555; }
-        #ui { position: absolute; bottom: 10px; left: 10px; pointer-events: none; }
-        .controls { position: absolute; bottom: 20px; right: 20px; display: grid; grid-template-columns: repeat(3, 50px); gap: 5px; }
-        .btn { width: 50px; height: 50px; background: rgba(255,255,255,0.2); border: 1px solid #fff; display: flex; align-items: center; justify-content: center; user-select: none; }
+        body { margin: 0; background: #000; color: white; font-family: 'Courier New', monospace; overflow: hidden; touch-action: none; }
+        canvas { display: block; background: #000; margin: auto; }
+        
+        /* Controles Mobile Grandes */
+        .controls { position: absolute; bottom: 10px; left: 10px; display: grid; grid-template-columns: repeat(3, 65px); gap: 10px; }
+        .action-btns { position: absolute; bottom: 10px; right: 10px; display: flex; flex-direction: column; gap: 10px; }
+        .btn { width: 65px; height: 65px; background: rgba(255,255,255,0.1); border: 2px solid #fff; display: flex; align-items: center; justify-content: center; border-radius: 10px; font-weight: bold; }
+        .btn:active { background: #fff; color: #000; }
+        
+        #ui-overlay { position: absolute; top: 10px; left: 10px; pointer-events: none; text-shadow: 2px 2px #000; }
     </style>
 </head>
 <body>
 
+<div id="ui-overlay">
+    <div id="room-info">Mercado - Sala 1</div>
+    <div id="hp-display">HP: 100/100</div>
+</div>
+
 <canvas id="gameCanvas"></canvas>
 
 <div class="controls">
-    <div></div><div class="btn" id="up">↑</div><div></div>
-    <div class="btn" id="left">←</div><div class="btn" id="down">↓</div><div class="btn" id="right">→</div>
+    <div></div><div class="btn" id="btn-up">↑</div><div></div>
+    <div class="btn" id="btn-left">←</div><div class="btn" id="btn-down">↓</div><div class="btn" id="btn-right">→</div>
 </div>
 
-<div id="ui">
-    <div id="status">HP: 100/100</div>
-    <div id="mode">Modo: Exploração (Mercado)</div>
+<div class="action-btns">
+    <div class="btn" id="btn-action" style="border-color: #ff0000;">FOICE</div>
+    <div class="btn" id="btn-confirm" style="border-color: #00ff00;">OK</div>
 </div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Ajuste de tela
-canvas.width = 400;
-canvas.height = 600;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-// Estados do Jogo
-let gameState = "EXPLORE"; // EXPLORE ou BATTLE
-let player = { x: 200, y: 500, size: 20, speed: 4, hp: 100 };
-let enemies = [
-    { x: 100, y: 100, size: 25, alive: true, type: "IA_STALKER" },
-    { x: 300, y: 200, size: 25, alive: true, type: "IA_WANDER" }
-];
-let targetEnemy = null;
+// --- VARIÁVEIS DE ESTADO ---
+let roomNumber = 1;
+let gameState = "EXPLORE"; // EXPLORE, BATTLE_MENU, BATTLE_DODGE
+let turn = "PLAYER"; 
+let puzzleSolved = false;
 
-// Sistema de Input
+let player = { x: canvas.width/2, y: canvas.height/2, hp: 100, maxHp: 100, size: 25 };
+let enemies = [];
+let bullets = [];
+let battleTimer = 0;
+
 const keys = {};
-window.addEventListener('keydown', e => keys[e.key] = true);
-window.addEventListener('keyup', e => keys[e.key] = false);
 
-// Touch Controls
-const setupBtn = (id, key) => {
+// --- LÓGICA DE SALAS E PUZZLES ---
+function initRoom(n) {
+    roomNumber = n;
+    enemies = [];
+    puzzleSolved = (n % 5 !== 0); // Só precisa resolver se for múltiplo de 5
+    
+    if (n % 5 === 0) {
+        // Sala de Puzzle (Botão no chão)
+        enemies = [{ x: canvas.width/2, y: canvas.height/2 - 100, size: 40, type: "PUZZLE_BLOCK", active: false }];
+    } else {
+        // Sala de Inimigos
+        for(let i=0; i<2; i++) {
+            enemies.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height/2, size: 30, type: "IA" });
+        }
+    }
+}
+
+// --- CONTROLES ---
+const bind = (id, key) => {
     const el = document.getElementById(id);
     el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
     el.addEventListener('touchend', () => keys[key] = false);
 };
-setupBtn('up', 'ArrowUp'); setupBtn('down', 'ArrowDown');
-setupBtn('left', 'ArrowLeft'); setupBtn('right', 'ArrowRight');
+bind('btn-up', 'ArrowUp'); bind('btn-down', 'ArrowDown');
+bind('btn-left', 'ArrowLeft'); bind('btn-right', 'ArrowRight');
+bind('btn-action', 'z'); bind('btn-confirm', 'Enter');
 
+// --- LOOP PRINCIPAL ---
 function update() {
     if (gameState === "EXPLORE") {
-        // Movimentação
-        if (keys.ArrowUp) player.y -= player.speed;
-        if (keys.ArrowDown) player.y += player.speed;
-        if (keys.ArrowLeft) player.x -= player.speed;
-        if (keys.ArrowRight) player.x += player.speed;
+        if (keys.ArrowUp) player.y -= 4;
+        if (keys.ArrowDown) player.y += 4;
+        if (keys.ArrowLeft) player.x -= 4;
+        if (keys.ArrowRight) player.x += 4;
 
-        // IA Simples dos Inimigos no Mercado
+        // Troca de Sala (Bordas)
+        if (player.y < 0 && puzzleSolved) { player.y = canvas.height - 30; initRoom(roomNumber + 1); }
+        if (player.y > canvas.height && roomNumber > 1) { player.y = 30; initRoom(roomNumber - 1); }
+
+        // Colisão Inimigo -> Batalha
         enemies.forEach(en => {
-            if (!en.alive) return;
-            
-            // Colisão/Interação (Entrar em Batalha)
-            let dx = player.x - en.x;
-            let dy = player.y - en.y;
-            let dist = Math.sqrt(dx*dx + dy*dy);
-            
+            let dist = Math.hypot(player.x - en.x, player.y - en.y);
             if (dist < 30) {
-                gameState = "BATTLE";
-                targetEnemy = en;
-                alert("INICIANDO BATALHA! Use sua Foice!");
-            }
-
-            // Movimento da IA no mapa
-            if(en.type === "IA_STALKER") {
-                en.x += (player.x - en.x) * 0.01;
-                en.y += (player.y - en.y) * 0.01;
+                if (en.type === "IA") {
+                    gameState = "BATTLE_MENU";
+                    bullets = [];
+                } else if (en.type === "PUZZLE_BLOCK") {
+                    en.active = true;
+                    puzzleSolved = true;
+                }
             }
         });
     }
+
+    if (gameState === "BATTLE_DODGE") {
+        // Movimento da Alma na Caixa
+        if (keys.ArrowUp) player.y -= 3;
+        if (keys.ArrowDown) player.y += 3;
+        if (keys.ArrowLeft) player.x -= 3;
+        if (keys.ArrowRight) player.x += 3;
+
+        // Limites da caixa de batalha
+        player.x = Math.max(canvas.width/2 - 75, Math.min(canvas.width/2 + 75, player.x));
+        player.y = Math.max(canvas.height/2 - 75, Math.min(canvas.height/2 + 75, player.y));
+
+        // IA de Balas do Inimigo
+        if (Math.random() < 0.05) {
+            bullets.push({x: canvas.width/2 + (Math.random()-0.5)*150, y: canvas.height/2 - 100, vy: 4});
+        }
+        
+        bullets.forEach((b, i) => {
+            b.y += b.vy;
+            if (Math.hypot(player.x - b.x, player.y - b.y) < 15) {
+                player.hp -= 1;
+                bullets.splice(i, 1);
+            }
+        });
+
+        battleTimer--;
+        if (battleTimer <= 0) {
+            gameState = "BATTLE_MENU";
+            player.x = canvas.width/2;
+            player.y = canvas.height - 150;
+        }
+    }
+    
+    document.getElementById('room-info').innerText = `Sala: ${roomNumber} ${!puzzleSolved ? "(Puzzle!)" : ""}`;
+    document.getElementById('hp-display').innerText = `HP: ${player.hp}/${player.maxHp}`;
 }
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (gameState === "EXPLORE") {
-        // Desenha o Mercado (Chão)
-        ctx.strokeStyle = "#333";
-        for(let i=0; i<canvas.width; i+=40) ctx.strokeRect(i, 0, 40, canvas.height);
-
-        // Jogador (Kris/Scythe User)
+        // Chão do Mercado
+        ctx.strokeStyle = "#222";
+        for(let i=0; i<canvas.width; i+=50) ctx.strokeRect(i, 0, 50, canvas.height);
+        
+        // Player
         ctx.fillStyle = "#00ffff";
-        ctx.fillRect(player.x - 10, player.y - 10, player.size, player.size);
-        // Foice visual
-        ctx.strokeStyle = "red";
-        ctx.beginPath();
-        ctx.arc(player.x, player.y, 25, 0, Math.PI);
-        ctx.stroke();
-
-        // Inimigos
-        ctx.fillStyle = "#ff00ff";
+        ctx.fillRect(player.x - 12, player.y - 12, 25, 25);
+        
+        // Inimigos/Objetos
         enemies.forEach(en => {
-            if(en.alive) ctx.fillRect(en.x - 12, en.y - 12, en.size, en.size);
+            ctx.fillStyle = en.type === "IA" ? "#ff00ff" : (en.active ? "#00ff00" : "#ffff00");
+            ctx.fillRect(en.x - 15, en.y - 15, en.size, en.size);
         });
-    } 
-    
-    if (gameState === "BATTLE") {
-        // Arena de Batalha Estilo Deltarune
-        ctx.strokeStyle = "white";
-        ctx.strokeRect(50, 300, 300, 200); // Caixa de Alma
-        
-        // Coração (Player em batalha)
-        ctx.fillStyle = "red";
-        ctx.beginPath();
-        ctx.arc(200, 400, 8, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = "white";
-        ctx.fillText("FOICE: ATACAR (Z) | AGIR (X)", 60, 530);
-        ctx.fillText("Inimigo HP: ???", 60, 280);
-        
-        // Simulação de IA de ataque (balas)
-        ctx.fillStyle = "white";
-        ctx.fillRect(180 + Math.sin(Date.now()*0.005)*50, 350, 10, 10);
     }
 
-    requestAnimationFrame(() => {
-        update();
-        draw();
-    });
+    if (gameState === "BATTLE_MENU" || gameState === "BATTLE_DODGE") {
+        // Arena
+        ctx.strokeStyle = "white";
+        ctx.strokeRect(canvas.width/2 - 80, canvas.height/2 - 80, 160, 160);
+        
+        // Alma (Coração)
+        ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, 10, 0, Math.PI*2);
+        ctx.fill();
+
+        if (gameState === "BATTLE_MENU") {
+            ctx.fillStyle = "white";
+            ctx.font = "20px Courier";
+            ctx.fillText("> ATACAR COM FOICE", canvas.width/2 - 70, canvas.height/2 + 120);
+            if (keys.z || keys.Enter) {
+                // Efeito de Corte
+                gameState = "BATTLE_DODGE";
+                battleTimer = 200; // Tempo do turno do inimigo
+            }
+        }
+
+        // Balas
+        ctx.fillStyle = "white";
+        bullets.forEach(b => ctx.fillRect(b.x, b.y, 10, 10));
+    }
+
+    requestAnimationFrame(draw);
 }
 
+initRoom(1);
 draw();
+updateLoop = setInterval(update, 1000/60);
 </script>
 </body>
 </html>
