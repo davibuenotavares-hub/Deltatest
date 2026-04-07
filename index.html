@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Deltarune Scythe Adventure</title>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+        canvas { display: block; background: #111; margin: auto; border: 2px solid #555; }
+        #ui { position: absolute; bottom: 10px; left: 10px; pointer-events: none; }
+        .controls { position: absolute; bottom: 20px; right: 20px; display: grid; grid-template-columns: repeat(3, 50px); gap: 5px; }
+        .btn { width: 50px; height: 50px; background: rgba(255,255,255,0.2); border: 1px solid #fff; display: flex; align-items: center; justify-content: center; user-select: none; }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div class="controls">
+    <div></div><div class="btn" id="up">↑</div><div></div>
+    <div class="btn" id="left">←</div><div class="btn" id="down">↓</div><div class="btn" id="right">→</div>
+</div>
+
+<div id="ui">
+    <div id="status">HP: 100/100</div>
+    <div id="mode">Modo: Exploração (Mercado)</div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Ajuste de tela
+canvas.width = 400;
+canvas.height = 600;
+
+// Estados do Jogo
+let gameState = "EXPLORE"; // EXPLORE ou BATTLE
+let player = { x: 200, y: 500, size: 20, speed: 4, hp: 100 };
+let enemies = [
+    { x: 100, y: 100, size: 25, alive: true, type: "IA_STALKER" },
+    { x: 300, y: 200, size: 25, alive: true, type: "IA_WANDER" }
+];
+let targetEnemy = null;
+
+// Sistema de Input
+const keys = {};
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+// Touch Controls
+const setupBtn = (id, key) => {
+    const el = document.getElementById(id);
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
+    el.addEventListener('touchend', () => keys[key] = false);
+};
+setupBtn('up', 'ArrowUp'); setupBtn('down', 'ArrowDown');
+setupBtn('left', 'ArrowLeft'); setupBtn('right', 'ArrowRight');
+
+function update() {
+    if (gameState === "EXPLORE") {
+        // Movimentação
+        if (keys.ArrowUp) player.y -= player.speed;
+        if (keys.ArrowDown) player.y += player.speed;
+        if (keys.ArrowLeft) player.x -= player.speed;
+        if (keys.ArrowRight) player.x += player.speed;
+
+        // IA Simples dos Inimigos no Mercado
+        enemies.forEach(en => {
+            if (!en.alive) return;
+            
+            // Colisão/Interação (Entrar em Batalha)
+            let dx = player.x - en.x;
+            let dy = player.y - en.y;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            
+            if (dist < 30) {
+                gameState = "BATTLE";
+                targetEnemy = en;
+                alert("INICIANDO BATALHA! Use sua Foice!");
+            }
+
+            // Movimento da IA no mapa
+            if(en.type === "IA_STALKER") {
+                en.x += (player.x - en.x) * 0.01;
+                en.y += (player.y - en.y) * 0.01;
+            }
+        });
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === "EXPLORE") {
+        // Desenha o Mercado (Chão)
+        ctx.strokeStyle = "#333";
+        for(let i=0; i<canvas.width; i+=40) ctx.strokeRect(i, 0, 40, canvas.height);
+
+        // Jogador (Kris/Scythe User)
+        ctx.fillStyle = "#00ffff";
+        ctx.fillRect(player.x - 10, player.y - 10, player.size, player.size);
+        // Foice visual
+        ctx.strokeStyle = "red";
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, 25, 0, Math.PI);
+        ctx.stroke();
+
+        // Inimigos
+        ctx.fillStyle = "#ff00ff";
+        enemies.forEach(en => {
+            if(en.alive) ctx.fillRect(en.x - 12, en.y - 12, en.size, en.size);
+        });
+    } 
+    
+    if (gameState === "BATTLE") {
+        // Arena de Batalha Estilo Deltarune
+        ctx.strokeStyle = "white";
+        ctx.strokeRect(50, 300, 300, 200); // Caixa de Alma
+        
+        // Coração (Player em batalha)
+        ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.arc(200, 400, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "white";
+        ctx.fillText("FOICE: ATACAR (Z) | AGIR (X)", 60, 530);
+        ctx.fillText("Inimigo HP: ???", 60, 280);
+        
+        // Simulação de IA de ataque (balas)
+        ctx.fillStyle = "white";
+        ctx.fillRect(180 + Math.sin(Date.now()*0.005)*50, 350, 10, 10);
+    }
+
+    requestAnimationFrame(() => {
+        update();
+        draw();
+    });
+}
+
+draw();
+</script>
+</body>
+</html>
